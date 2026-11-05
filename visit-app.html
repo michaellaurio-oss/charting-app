@@ -1,0 +1,566 @@
+<title>Home Visit Charting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: phone-first single column app — sticky patient bar, three tabs, dictation dock pinned to the bottom. */
+:root{
+  --bg:#F2F5F4; --surface:#FFFFFF; --sunk:#E7ECEA; --line:#D3DCD9;
+  --fg:#15211E; --muted:#56655F; --accent:#0B6B5F; --accent-ink:#FFFFFF; --accent-soft:#DCEFEA;
+  --ok:#21703A; --ok-soft:#E1F1E5; --warn:#8A5300; --warn-soft:#FBEFD9; --bad:#B0281C; --bad-soft:#FBE4E1;
+  --flash:#FFF3B8;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0F1614; --surface:#18221F; --sunk:#111A17; --line:#2C3A36;
+  --fg:#E6EEEB; --muted:#9AABA5; --accent:#4FC2AE; --accent-ink:#0B1F1B; --accent-soft:#163A33;
+  --ok:#6BCB86; --ok-soft:#173222; --warn:#E8B35A; --warn-soft:#3A2C12; --bad:#FF8A7E; --bad-soft:#3E1C18;
+  --flash:#4A4316; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1614; --surface:#18221F; --sunk:#111A17; --line:#2C3A36;
+  --fg:#E6EEEB; --muted:#9AABA5; --accent:#4FC2AE; --accent-ink:#0B1F1B; --accent-soft:#163A33;
+  --ok:#6BCB86; --ok-soft:#173222; --warn:#E8B35A; --warn-soft:#3A2C12; --bad:#FF8A7E; --bad-soft:#3E1C18;
+  --flash:#4A4316; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.45}
+button,textarea,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.wrap{max-width:720px;margin:0 auto;padding-inline:16px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+h1,h2,h3{text-wrap:balance;margin:0}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;min-height:44px;font-weight:700}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:700;white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.neutral{background:var(--sunk);color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+
+/* Home list */
+.home{padding-block:24px 40px;display:flex;flex-direction:column;gap:18px}
+.eyebrow{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.home h1{font-size:28px}
+.visits{display:flex;flex-direction:column;gap:10px}
+.visit-card{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:center;text-align:left;width:100%;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+.visit-card .time{font-family:var(--f-mono);font-size:15px}
+.visit-card .who{font-weight:700;font-size:17px}
+.visit-card .dx{font-size:14px;color:var(--muted)}
+.note{font-size:14px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+
+/* Visit shell */
+.app{display:flex;flex-direction:column;min-height:100%}
+.pbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.pbar .row{display:flex;align-items:center;gap:10px;padding-block:10px}
+.pbar .name{font-weight:700;font-size:18px;line-height:1.2}
+.pbar .sub{font-size:13px;color:var(--muted)}
+.back{border:none;background:none;padding:8px;min-width:44px;min-height:44px;border-radius:10px}
+.tabs{display:flex;gap:4px}
+.tab{flex:1;border:none;background:none;padding:10px 4px;min-height:44px;font-weight:700;color:var(--muted);border-bottom:3px solid transparent}
+.tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.tab .count{font-family:var(--f-mono);font-weight:500;font-size:12px;background:var(--sunk);border-radius:999px;padding:1px 7px;margin-left:4px}
+main{flex:1;padding-block:16px 24px}
+.idbanner{border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;margin-bottom:14px;font-size:15px}
+.idbanner.ok{background:var(--ok-soft);color:var(--ok)}
+.idbanner.bad{background:var(--bad-soft);color:var(--bad)}
+.idbanner.pending{background:var(--warn-soft);color:var(--warn)}
+.idbanner b{display:block}
+.idbanner ul{margin:4px 0 0;padding-left:18px;color:var(--fg)}
+
+/* Transcript */
+.feed{display:flex;flex-direction:column;gap:10px}
+.seg{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.seg .meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);margin-bottom:4px}
+.seg p{margin:0}
+.empty{border:1.5px dashed var(--line);border-radius:14px;padding:18px;color:var(--muted);display:flex;flex-direction:column;gap:8px}
+.empty b{color:var(--fg)}
+
+/* Chart */
+.section{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;overflow:hidden}
+.section h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;padding:10px 14px;background:var(--sunk);display:flex;justify-content:space-between;gap:8px}
+.section h2 span{font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.field{border:none;background:none;text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);min-height:56px;width:100%;transition:background .8s}
+.field.wide{grid-column:1/-1}
+.fields .field:nth-child(odd):not(.wide){border-right:1px solid var(--line)}
+.field .k{display:block;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.03em}
+.field .v{display:block;font-size:16px;overflow-wrap:anywhere}
+.field .v.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.field .v.blank{color:var(--muted)}
+.field.uncertain .v{color:var(--warn)}
+.field .src{display:block;margin-top:6px;font-size:13px;color:var(--muted);font-style:italic}
+.field.fresh{background:var(--flash)}
+.flag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.05em}
+@media (prefers-reduced-motion:reduce){.field{transition:none}}
+table.meds{width:100%;border-collapse:collapse;font-size:15px}
+.meds th{text-align:left;font-size:12px;color:var(--muted);padding:8px 14px;border-bottom:1px solid var(--line)}
+.meds td{padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+.tablewrap{overflow-x:auto}
+.corr{padding:10px 14px;font-size:14px;border-bottom:1px solid var(--line)}
+.corr:last-child{border-bottom:none}
+.signbox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:15px}
+.checklist li{display:flex;gap:8px;align-items:baseline}
+.mark{font-weight:700;width:18px;flex:none;text-align:center}
+.mark.ok{color:var(--ok)} .mark.bad{color:var(--bad)} .mark.warn{color:var(--warn)}
+
+/* Physician */
+.rec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.rec .item{font-weight:700}
+.rec .why{font-size:14px;color:var(--muted)}
+.miss{font-size:13px;font-weight:700;color:var(--warn)}
+.recs{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.draft label{font-weight:700;display:block;margin-bottom:6px}
+.draft textarea{width:100%;min-height:300px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface);font-size:15px;line-height:1.5;resize:vertical}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+.status{font-size:14px}
+.panel{border:2px solid var(--accent);border-radius:14px;padding:14px;margin-top:12px;background:var(--surface);display:flex;flex-direction:column;gap:8px}
+.panel h3{font-size:17px}
+.diff{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:15px}
+.diff .tag{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-right:6px}
+.tag.add{color:var(--ok)} .tag.chg{color:var(--warn)} .tag.del{color:var(--bad)}
+.notice{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+
+/* Dictation dock */
+.dock{position:sticky;bottom:0;z-index:5;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.dock .inner{padding-block:10px;display:flex;flex-direction:column;gap:8px}
+.dock textarea{width:100%;min-height:76px;max-height:40vh;border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);resize:vertical}
+.dock textarea:focus{border-color:var(--accent);outline:none}
+.dock .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dock .hint{font-size:13px;color:var(--muted);flex:1;min-width:160px}
+.state{font-size:13px;display:flex;align-items:center;gap:6px}
+.spin{width:12px;height:12px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.err{color:var(--bad);font-size:14px}
+@media (max-width:420px){.fields{grid-template-columns:minmax(0,1fr)}.fields .field:nth-child(odd):not(.wide){border-right:none}}
+</style>
+
+<div id="root" class="app"></div>
+
+<script>
+(() => {
+// ---------- Fictional data ----------
+const NURSE = "Jordan Lee";
+const PATIENTS = [
+  { id:"p1", time:"9:00", first:"Dorothy", last:"Alvarez", dob:"1948-03-14", member:"MBR-7731-0429", mrn:"HH-0042817",
+    dx:"CHF exacerbation · venous ulcer R calf", physician:"Dr. Priya Raman",
+    meds:["Furosemide 40 mg PO daily","Metoprolol succinate 50 mg PO daily","Lisinopril 10 mg PO daily","Metformin 500 mg PO BID","Potassium chloride ER 20 mEq PO daily","Acetaminophen 650 mg PO q6h PRN"] },
+  { id:"p2", time:"11:30", first:"Harold", last:"Kim", dob:"1940-11-02", member:"MBR-5520-1187", mrn:"HH-0039954",
+    dx:"COPD · post-pneumonia", physician:"Dr. Marcus Webb",
+    meds:["Tiotropium 18 mcg inhaled daily","Albuterol HFA 2 puffs q4h PRN","Prednisone 10 mg PO daily (taper)"] },
+  { id:"p3", time:"2:15", first:"Rosa", last:"Delgado", dob:"1955-06-21", member:"MBR-6604-3312", mrn:"HH-0044102",
+    dx:"Post-op R hip replacement · type 2 diabetes", physician:"Dr. Priya Raman",
+    meds:["Enoxaparin 40 mg subcut daily","Oxycodone 5 mg PO q6h PRN","Insulin glargine 18 units subcut at bedtime"] }
+];
+const SAMPLE = {
+  p1:[
+    "Good morning, I'm Jordan from home health. Let me verify, your name is Dorothy Alvarez? Great. And your birthday, March 14th 1948. Member number M B R 7 7 3 1 0 4 2 9. Okay.",
+    "Blood pressure sitting left arm 138 over 82. Heart rate 84 regular. Resp 20. Temp 98.2 oral. Sat 94 percent on room air. Weight today 171.4, last visit was 168.8. Sugar this morning per her log 146.",
+    "Lungs, fine crackles both bases. She's sleeping on two pillows now, was one. Left ankle plus two pitting edema, right is the same. Was plus one Monday. Actually let me retake that blood pressure. Sitting 142 over 84.",
+    "She says she skipped her Lasix Monday and Tuesday, didn't want to keep getting up while her daughter's at work. Metoprolol, lisinopril, metformin and the potassium she's taking. No Tylenol the last two days.",
+    "Wound right posterior calf, 2.8 by 1.9 by 0.2 centimeters, eighty percent granular, twenty percent slough, moderate serous drainage, no odor. Cleansed with saline, calcium alginate and foam border. Pain three out of ten at the wound, better when she elevates it.",
+    "Taught her and the daughter on the phone about daily weights, the two pound rule and low salt. She told me back when to call us. We need to order you oxygen, two liters as needed for shortness of breath. I'm also going to ask the doctor about some morphine for the breathing. And let's get you a bath aide three times a week."
+  ]
+};
+const ASSESS = [["cardiovascular","Cardiovascular"],["respiratory","Respiratory"],["neuro_cognitive","Neuro / cognitive"],["gi_nutrition","GI / nutrition"],["gu","GU"],["integumentary","Skin"],["musculoskeletal","Musculoskeletal"],["psychosocial","Psychosocial"]];
+const VITALS = [["bp_sitting","BP sitting"],["bp_standing","BP standing"],["heart_rate","Heart rate"],["resp_rate","Resp rate"],["temp_f","Temp °F"],["spo2","SpO₂ %"],["oxygen","Oxygen"],["weight_lb","Weight lb"],["blood_glucose","Glucose mg/dL"],["pain_score","Pain /10"],["pain_location","Pain location","wide"]];
+const WOUND = [["location","Location","wide"],["length_cm","Length cm"],["width_cm","Width cm"],["depth_cm","Depth cm"],["exudate","Drainage"],["wound_bed","Wound bed","wide"],["periwound","Periwound","wide"],["treatment","Treatment","wide"]];
+const NUMERIC = new Set(["heart_rate","resp_rate","temp_f","spo2","weight_lb","blood_glucose","pain_score","length_cm","width_cm","depth_cm","bp_sitting","bp_standing"]);
+
+function emptyChart(){
+  return { identity:{name:null,dob:null,member_id:null},
+    vitals:Object.fromEntries(VITALS.map(v=>[v[0],null])),
+    assessment:Object.fromEntries(ASSESS.map(a=>[a[0],null])),
+    wound:Object.fromEntries(WOUND.map(w=>[w[0],null])),
+    medications:[], teaching:{taught_to:null,topics:null,teach_back:null},
+    homebound:null, home_safety:null, recommendations:[], corrections:[], sources:{}, uncertain:[] };
+}
+const visits = {};
+function visitFor(id){
+  if(!visits[id]) visits[id] = { segs:[], chart:emptyChart(), processing:false, rerun:false, error:null, fresh:new Set(),
+    openSrc:null, draft:"", draftBase:"", draftTouched:false, msgStatus:"draft", sentAt:null, recon:null, reconBusy:false,
+    reconErr:null, copyNote:null, signed:null, sampleIdx:0, composer:"" };
+  return visits[id];
+}
+const S = { screen:"home", pid:null, tab:"dictate" };
+
+// ---------- Helpers ----------
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $ = id => document.getElementById(id);
+const P = () => PATIENTS.find(p=>p.id===S.pid);
+const V = () => visitFor(S.pid);
+const now = () => new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+const fmtDob = d => { if(!d) return ""; const [y,m,dd]=d.split("-"); return `${m}/${dd}/${y}`; };
+const norm = s => String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+const has = v => v!==null && v!==undefined && v!=="";
+
+let samplePromise = null;
+function getSample(){ if(!samplePromise) samplePromise = (window.claude ? window.claude.use("sample") : Promise.resolve(null)).catch(()=>null); return samplePromise; }
+function errCopy(e){
+  const c = e && e.code;
+  if(c==="not_granted"||c==="sampling_disabled"||c==="not_declared"||c==="capability_disabled") return "Charting needs permission to use Claude. Reload the page and allow it when asked.";
+  if(c==="rate_limited") return "Too many requests right now. Wait a minute, then tap Retry.";
+  if(c==="session_expired") return "Your Claude session expired. Sign in again, then tap Retry.";
+  if(c==="invalid_json") return "The chart update came back unreadable. Tap Retry.";
+  if(c==="prompt_too_large") return "This visit's transcript is too long to process at once.";
+  return "The chart couldn't be updated. Check your connection and tap Retry.";
+}
+
+// ---------- Identity check (local, no AI) ----------
+function identityStatus(p, id){
+  const said = { name:has(id.name), dob:has(id.dob), member:has(id.member_id) };
+  const issues = [];
+  if(said.name){ const n = norm(id.name); if(!(n.includes(norm(p.first)) && n.includes(norm(p.last)))) issues.push(`Name said: “${id.name}” — record: ${p.first} ${p.last}`); }
+  if(said.dob && id.dob !== p.dob) issues.push(`Birth date said: ${fmtDob(id.dob)||id.dob} — record: ${fmtDob(p.dob)}`);
+  if(said.member && norm(id.member_id) !== norm(p.member)) issues.push(`Member # said: ${id.member_id} — record: ${p.member}`);
+  if(issues.length) return {state:"bad", issues};
+  if(said.name && said.dob) return {state:"ok", member:said.member};
+  const need = []; if(!said.name) need.push("name"); if(!said.dob) need.push("birth date");
+  return {state:"pending", need};
+}
+
+// ---------- Physician draft (local template) ----------
+function buildDraft(p, recs){
+  const d = new Date().toLocaleDateString([], {month:"2-digit", day:"2-digit", year:"numeric"});
+  const lines = [`${p.physician} — home visit today (${d}) for ${p.first} ${p.last} (DOB ${fmtDob(p.dob)}, MRN ${p.mrn}). Requesting approval for:`, ""];
+  recs.forEach((r,i)=>{
+    let l = `${i+1}. ${r.item}`;
+    if(r.details) l += `, ${r.details}`;
+    if(r.missing && r.missing.length) l += ` [${r.missing.join(" / ")}: ___]`;
+    lines.push(l);
+    if(r.rationale) lines.push(`   Reason: ${r.rationale}`);
+  });
+  lines.push("", `Please reply with approval or changes. — ${NURSE}, RN`);
+  return lines.join("\n");
+}
+function syncDraft(v){
+  const p = P(); const recs = v.chart.recommendations || [];
+  const fresh = recs.length ? buildDraft(p, recs) : "";
+  if(!v.draftTouched){ v.draft = fresh; v.draftBase = fresh; v.staleDraft = false; }
+  else if(fresh !== v.draftBase) v.staleDraft = true;
+}
+
+// ---------- Extraction ----------
+const SHAPE = `{"identity":{"name":null,"dob":null,"member_id":null},
+"vitals":{"bp_sitting":null,"bp_standing":null,"heart_rate":null,"resp_rate":null,"temp_f":null,"spo2":null,"oxygen":null,"weight_lb":null,"blood_glucose":null,"pain_score":null,"pain_location":null},
+"assessment":{"cardiovascular":null,"respiratory":null,"neuro_cognitive":null,"gi_nutrition":null,"gu":null,"integumentary":null,"musculoskeletal":null,"psychosocial":null},
+"wound":{"location":null,"length_cm":null,"width_cm":null,"depth_cm":null,"wound_bed":null,"exudate":null,"periwound":null,"treatment":null},
+"medications":[{"name":"Furosemide","dose":"40 mg PO daily","status":"discrepancy","note":"skipped 2 days"}],
+"teaching":{"taught_to":null,"topics":null,"teach_back":null},
+"homebound":null,"home_safety":null,
+"recommendations":[{"item":"Home oxygen","details":"2 L/min PRN for SOB","rationale":"SpO2 94% RA, crackles bilateral bases","missing":[]}],
+"corrections":[{"field":"vitals.bp_sitting","from":"138/82","to":"142/84"}],
+"sources":{"vitals.weight_lb":"weight today 171.4"},
+"uncertain":[]}`;
+
+function extractionPrompt(p, v){
+  const segs = v.segs.map((s,i)=>`[${i+1}] ${s.text}`).join("\n");
+  return `You fill a home health skilled nursing visit chart from a nurse's spoken dictation. Only the nurse's voice is captured; she repeats the patient's answers out loud. Ignore greetings, small talk and filler.
+
+Rules:
+- Use only what the nurse said. Never invent or assume values. Fields she did not mention stay null.
+- Later statements override earlier ones ("actually", "let me retake", "correction"). Record each override in "corrections".
+- Resolve references from context ("right is the same" = same finding on the right side).
+- identity = exactly what she said aloud for name, birth date (YYYY-MM-DD) and member number. Do not fill identity from anything else.
+- vitals: blood pressure as "142/84"; numbers as numbers; "oxygen" is O2 delivery as said (e.g. "room air", "2 L NC").
+- assessment: one concise clinical sentence per body system, in nurse charting style (e.g. "+2 pitting edema bilateral ankles (was +1)").
+- medications: one entry per medication she mentioned, matched to the patient's medication list where possible (brand names map to generics, e.g. Lasix = Furosemide). status is one of taking | not_taking | partial | prn | discrepancy.
+- recommendations: things she says should be ordered, requested or scheduled ("we need to order", "let's get you", "I'll ask the doctor about"). These are proposals needing physician approval, not orders. item = what; details = dose/route/frequency/duration only as stated; rationale = short clinical reasons drawn from findings in this visit; missing = details a physician would need that she did not state (e.g. "dose", "route", "frequency").
+- sources: for every non-null scalar field, the short transcript snippet it came from, keyed by path like "vitals.weight_lb" or "assessment.respiratory" or "identity.dob".
+- uncertain: paths whose values may be misheard or ambiguous.
+Reply with ONLY one JSON object in exactly this shape (example values shown; arrays may be empty):
+${SHAPE}
+
+Patient's medication list on file: ${p.meds.join("; ")}
+
+Transcript so far, oldest first:
+${segs}`;
+}
+
+let ctl = null;
+async function processVisit(){
+  const v = V(), pid = S.pid;
+  if(v.processing){ v.rerun = true; return; }
+  const sample = await getSample();
+  if(!sample){ v.error = "Charting is only available when this page is opened in Claude."; render(); return; }
+  v.processing = true; v.error = null; v.rerun = false;
+  const upto = v.segs.length;
+  v.segs.forEach((s,i)=>{ if(i<upto && s.status!=="done") s.status="working"; });
+  render();
+  try{
+    const p = PATIENTS.find(x=>x.id===pid);
+    const out = await sample.json(extractionPrompt(p, v), {modelTier:"quick", cache:false});
+    if(!out || typeof out!=="object" || !out.vitals) throw {code:"invalid_json"};
+    const prev = v.chart, next = Object.assign(emptyChart(), out);
+    next.identity = Object.assign(emptyChart().identity, out.identity||{});
+    next.vitals = Object.assign(emptyChart().vitals, out.vitals||{});
+    next.assessment = Object.assign(emptyChart().assessment, out.assessment||{});
+    next.wound = Object.assign(emptyChart().wound, out.wound||{});
+    next.teaching = Object.assign(emptyChart().teaching, out.teaching||{});
+    ["medications","recommendations","corrections","uncertain"].forEach(k=>{ if(!Array.isArray(next[k])) next[k]=[]; });
+    if(!next.sources || typeof next.sources!=="object") next.sources = {};
+    v.fresh = new Set();
+    ["identity","vitals","assessment","wound","teaching"].forEach(g=>{
+      Object.keys(next[g]).forEach(k=>{ if(JSON.stringify(next[g][k])!==JSON.stringify(prev[g][k]) && has(next[g][k])) v.fresh.add(`${g}.${k}`); });
+    });
+    v.chart = next;
+    v.segs.forEach((s,i)=>{ if(i<upto) s.status="done"; });
+    const visitBefore = S.pid; S.pid = pid; syncDraft(v); S.pid = visitBefore;
+  }catch(e){
+    v.error = errCopy(e);
+    v.segs.forEach((s,i)=>{ if(i<upto && s.status==="working") s.status="failed"; });
+  }finally{
+    v.processing = false;
+  }
+  render();
+  setTimeout(()=>{ v.fresh = new Set(); if(S.pid===pid) document.querySelectorAll(".field.fresh").forEach(el=>el.classList.remove("fresh")); }, 2600);
+  if(v.rerun && !v.error) processVisit();
+}
+
+function addDictation(){
+  const v = V(); const box = $("composer"); const text = (box.value||"").trim();
+  if(!text || v.signed) return;
+  v.segs.push({text, at:now(), status:"queued"});
+  box.value = ""; v.composer = "";
+  processVisit();
+  if(S.tab==="dictate") render();
+}
+
+// ---------- Reconcile (Update & Copy) ----------
+async function updateAndCopy(){
+  const v = V();
+  v.copyNote = null; v.reconErr = null;
+  if(v.draft === v.draftBase){ await doCopy(v); return; }
+  const sample = await getSample();
+  if(!sample){ v.reconErr = "Checking edits needs this page to be opened in Claude."; render(); return; }
+  v.reconBusy = true; render();
+  try{
+    const prompt = `A nurse dictated these recommendations during a home visit (JSON):
+${JSON.stringify(v.chart.recommendations)}
+
+She then edited the message she will send to the physician. Final message text:
+"""
+${v.draft}
+"""
+
+Compare the final message with the dictated recommendations. Reply with ONLY one JSON object:
+{"recommendations":[{"item":"","details":null,"rationale":null,"missing":[]}],"added":["short description"],"changed":[{"item":"","from":"","to":""}],"removed":["short description"]}
+"recommendations" must be the complete final list exactly as the final message states it (keep a rationale only if the message still gives it; "missing" lists details left as blanks or placeholders). Use empty arrays when nothing was added, changed or removed.`;
+    const out = await sample.json(prompt, {modelTier:"quick", cache:false});
+    if(!out || !Array.isArray(out.recommendations)) throw {code:"invalid_json"};
+    out.added = Array.isArray(out.added)?out.added:[]; out.changed = Array.isArray(out.changed)?out.changed:[]; out.removed = Array.isArray(out.removed)?out.removed:[];
+    v.recon = out;
+  }catch(e){ v.reconErr = e && e.code==="rate_limited" ? errCopy(e) : "Your edits couldn't be checked. Tap Update & Copy again."; }
+  finally{ v.reconBusy = false; render(); }
+}
+async function confirmRecon(){
+  const v = V();
+  v.chart.recommendations = v.recon.recommendations;
+  v.draftBase = v.draft; v.staleDraft = false;
+  v.recon = null;
+  await doCopy(v);
+}
+async function doCopy(v){
+  try{ await navigator.clipboard.writeText(v.draft); v.msgStatus = "copied"; v.copyNote = "Copied. Paste it into Teams, send it, then tap Mark as sent."; }
+  catch(_){
+    const ta = $("draft"); if(ta){ ta.focus(); ta.select(); }
+    v.msgStatus = "copied"; v.copyNote = "Your phone blocked automatic copy. The message is selected — use Copy from the menu, then tap Mark as sent.";
+  }
+  render();
+}
+
+// ---------- Rendering ----------
+function render(){
+  const root = $("root");
+  if(S.screen==="home"){ root.innerHTML = homeHTML(); bindHome(); return; }
+  const active = document.activeElement;
+  const typingDraft = active && active.id==="draft";
+  const typingComposer = active && active.id==="composer";
+  const caret = typingComposer ? [active.selectionStart, active.selectionEnd] : null;
+  if(typingDraft){ renderPbar(); return; } // don't disturb the message while she types
+  if(!$("visit")){ root.innerHTML = shellHTML(); bindShell(); }
+  renderPbar();
+  $("main").innerHTML = S.tab==="dictate" ? dictateHTML() : S.tab==="chart" ? chartHTML() : physicianHTML();
+  bindMain();
+  renderDock();
+  if(typingComposer){ const c=$("composer"); if(c){ c.focus(); try{ c.setSelectionRange(caret[0],caret[1]); }catch(_){} } }
+}
+
+function homeHTML(){
+  return `<div class="wrap home">
+    <div><div class="eyebrow">Today · ${esc(NURSE)}, RN</div><h1>Home visits</h1></div>
+    <div class="visits">${PATIENTS.map(p=>{
+      const v = visits[p.id]; const st = v?.signed ? `<span class="chip ok"><span class="dot"></span>Signed</span>` : v?.segs.length ? `<span class="chip warn"><span class="dot"></span>In progress</span>` : `<span class="chip neutral">Scheduled</span>`;
+      return `<button class="visit-card" data-pid="${p.id}"><span class="time">${esc(p.time)}</span>
+        <span><span class="who">${esc(p.first)} ${esc(p.last)}</span><br><span class="dx">${esc(p.dx)}</span></span>${st}</button>`;}).join("")}
+    </div>
+    <p class="note">Prototype with fictional patients. Don't enter real patient information.</p>
+  </div>`;
+}
+function bindHome(){ document.querySelectorAll("[data-pid]").forEach(b=>b.onclick=()=>{ S.pid=b.dataset.pid; S.screen="visit"; S.tab="dictate"; $("root").innerHTML=""; render(); }); }
+
+function shellHTML(){
+  return `<div id="visit" class="app">
+    <header class="pbar"><div class="wrap" id="pbar"></div></header>
+    <main class="wrap" id="main"></main>
+    <div class="dock" id="dock"></div>
+  </div>`;
+}
+function bindShell(){}
+
+function renderPbar(){
+  const p = P(), v = V(), id = identityStatus(p, v.chart.identity);
+  const idChip = id.state==="ok" ? `<span class="chip ok"><span class="dot"></span>ID verified</span>` : id.state==="bad" ? `<span class="chip bad"><span class="dot"></span>ID mismatch</span>` : `<span class="chip warn"><span class="dot"></span>Verify ID</span>`;
+  const recN = (v.chart.recommendations||[]).length;
+  $("pbar").innerHTML = `<div class="row">
+      <button class="back" id="back" aria-label="Back to today's visits"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div style="flex:1;min-width:0"><div class="name">${esc(p.first)} ${esc(p.last)}</div><div class="sub mono">${esc(p.mrn)} · ${esc(p.time)}</div></div>
+      ${idChip}
+    </div>
+    <div class="tabs" role="tablist">
+      ${[["dictate","Dictate",v.segs.length],["chart","Chart",null],["physician","Physician",recN||null]].map(([k,l,n])=>
+        `<button class="tab" role="tab" aria-selected="${S.tab===k}" data-tab="${k}">${l}${n?`<span class="count">${n}</span>`:""}</button>`).join("")}
+    </div>`;
+  $("back").onclick = ()=>{ S.screen="home"; S.pid=null; render(); };
+  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{ S.tab=b.dataset.tab; render(); window.scrollTo(0,0); });
+}
+
+function idBanner(){
+  const p = P(), v = V(), id = identityStatus(p, v.chart.identity);
+  if(id.state==="ok") return `<div class="idbanner ok"><div><b>Identity verified</b>Name and birth date${id.member?" and member number":""} match ${esc(p.first)} ${esc(p.last)}'s record.</div></div>`;
+  if(id.state==="bad") return `<div class="idbanner bad" role="alert"><div><b>Identity doesn't match this patient</b>Stop and confirm you're with the right person before charting. Signing is blocked.<ul>${id.issues.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div></div>`;
+  return `<div class="idbanner pending"><div><b>Verify identity</b>Say the patient's ${esc(id.need.join(" and "))} out loud, plus the member number.</div></div>`;
+}
+
+function dictateHTML(){
+  const v = V();
+  const segs = v.segs.map((s,i)=>{
+    const st = s.status==="done" ? `<span class="chip ok">Charted</span>` : s.status==="failed" ? `<span class="chip bad">Not charted</span>` : `<span class="chip neutral">Processing</span>`;
+    return `<div class="seg"><div class="meta"><span class="mono">#${i+1} · ${esc(s.at)}</span>${st}</div><p>${esc(s.text)}</p></div>`;}).reverse().join("");
+  return `${idBanner()}
+    ${v.error?`<div class="notice" role="alert"><span>${esc(v.error)}</span><button class="btn" id="retry">Retry</button></div>`:""}
+    <div class="feed">${segs || `<div class="empty"><b>Start the visit by talking.</b><span>Tap the box below, then the microphone on your phone's keyboard. Say what you find as you go, then tap Add to chart. Each part fills the chart in a few seconds.</span><span>Begin by verifying the patient's name, birth date and member number out loud.</span></div>`}</div>`;
+}
+
+function fieldBtn(group, key, label, wide){
+  const v = V(); const path = `${group}.${key}`; const val = v.chart[group][key];
+  const unc = (v.chart.uncertain||[]).includes(path);
+  const src = v.chart.sources?.[path];
+  const shown = has(val) ? esc(val) : "—";
+  const cls = ["field", wide?"wide":"", unc?"uncertain":"", v.fresh.has(path)?"fresh":""].join(" ");
+  const open = v.openSrc===path && src;
+  return `<button class="${cls}" data-src="${path}" ${src?`aria-expanded="${!!open}"`:""}><span class="k">${esc(label)}${unc?`<span class="flag">Check</span>`:""}</span>
+    <span class="v ${has(val)?(NUMERIC.has(key)?"num":""):"blank"}">${shown}</span>${open?`<span class="src">Said: “${esc(src)}”</span>`:""}</button>`;
+}
+
+function chartHTML(){
+  const p = P(), v = V(), c = v.chart, id = identityStatus(p, c.identity);
+  const med = c.medications||[];
+  const statusChip = s => ({taking:`<span class="chip ok">Taking</span>`,prn:`<span class="chip neutral">PRN</span>`,discrepancy:`<span class="chip bad">Discrepancy</span>`,not_taking:`<span class="chip bad">Not taking</span>`,partial:`<span class="chip warn">Partial</span>`}[s] || `<span class="chip neutral">${esc(s||"—")}</span>`);
+  const missing = [];
+  if(!has(c.vitals.bp_sitting) && !has(c.vitals.bp_standing)) missing.push("Blood pressure");
+  if(!has(c.vitals.heart_rate)) missing.push("Heart rate");
+  if(!has(c.vitals.weight_lb)) missing.push("Weight");
+  if(!has(c.vitals.pain_score)) missing.push("Pain score");
+  if(!has(c.assessment.cardiovascular)) missing.push("Cardiovascular assessment");
+  if(!has(c.assessment.respiratory)) missing.push("Respiratory assessment");
+  if(!med.length) missing.push("Medication review");
+  const busy = v.processing || v.segs.some(s=>s.status!=="done");
+  const canSign = id.state==="ok" && !busy && v.segs.length>0 && !v.signed;
+  return `${idBanner()}
+  <p class="muted" style="margin:0 0 12px;font-size:14px">Tap any filled field to see what you said. Fields marked Check may have been misheard.</p>
+  <section class="section"><h2>Vitals</h2><div class="fields">${VITALS.map(([k,l,w])=>fieldBtn("vitals",k,l,w)).join("")}</div></section>
+  <section class="section"><h2>Systems assessment</h2><div class="fields">${ASSESS.map(([k,l])=>fieldBtn("assessment",k,l,true)).join("")}</div></section>
+  <section class="section"><h2>Wound <span>${has(c.wound.location)?esc(c.wound.location):""}</span></h2><div class="fields">${WOUND.filter(w=>w[0]!=="location").map(([k,l,w])=>fieldBtn("wound",k,l,w)).join("")}</div></section>
+  <section class="section"><h2>Medication review <span>${med.length} reviewed</span></h2>
+    ${med.length?`<div class="tablewrap"><table class="meds"><thead><tr><th>Medication</th><th>Status</th><th>Note</th></tr></thead><tbody>${med.map(m=>`<tr><td>${esc(m.name)}${m.dose?`<br><span class="muted mono" style="font-size:13px">${esc(m.dose)}</span>`:""}</td><td>${statusChip(m.status)}</td><td>${esc(m.note||"")}</td></tr>`).join("")}</tbody></table></div>`
+    :`<div class="corr muted">Not reviewed yet.</div>`}</section>
+  <section class="section"><h2>Teaching</h2><div class="fields">${fieldBtn("teaching","taught_to","Taught to",true)}${fieldBtn("teaching","topics","Topics",true)}${fieldBtn("teaching","teach_back","Teach-back",true)}</div></section>
+  ${(c.corrections||[]).length?`<section class="section"><h2>Corrections <span>latest value kept</span></h2>${c.corrections.map(x=>`<div class="corr"><span class="mono">${esc(x.field)}</span>: <s class="muted">${esc(x.from)}</s> → <b>${esc(x.to)}</b></div>`).join("")}</section>`:""}
+  <div class="signbox">
+    <h2 style="font-size:18px">${v.signed?`Signed ${esc(v.signed)}`:"Review and sign"}</h2>
+    <ul class="checklist">
+      <li><span class="mark ${id.state==="ok"?"ok":"bad"}">${id.state==="ok"?"✓":"✕"}</span>${id.state==="ok"?"Identity verified":id.state==="bad"?"Identity mismatch — resolve before signing":"Identity not verified yet"}</li>
+      <li><span class="mark ${busy?"warn":"ok"}">${busy?"…":"✓"}</span>${busy?"Dictation still processing":"All dictation charted"}</li>
+      ${missing.length?`<li><span class="mark warn">!</span><span>Not recorded: ${esc(missing.join(", "))}</span></li>`:`<li><span class="mark ok">✓</span>Core sections recorded</li>`}
+    </ul>
+    ${v.signed?"":`<button class="btn primary" id="sign" ${canSign?"":"disabled"}>Sign visit note</button>`}
+  </div>`;
+}
+
+function physicianHTML(){
+  const p = P(), v = V(), recs = v.chart.recommendations||[];
+  if(!recs.length) return `<div class="empty"><b>No recommendations yet.</b><span>When you say things like “we need to order oxygen” or “let's get you a bath aide,” they show up here as requests for ${esc(p.physician)}'s approval. Nothing is ordered until the physician approves.</span></div>`;
+  const status = v.msgStatus==="sent" ? `<span class="chip ok"><span class="dot"></span>Sent ${esc(v.sentAt)} · awaiting physician</span>` : v.msgStatus==="copied" ? `<span class="chip warn"><span class="dot"></span>Copied · not marked sent</span>` : `<span class="chip neutral">Draft · not sent</span>`;
+  return `<div class="recs">${recs.map(r=>`<div class="rec"><span class="item">${esc(r.item)}</span>${r.details?`<span>${esc(r.details)}</span>`:""}${r.rationale?`<span class="why">${esc(r.rationale)}</span>`:""}${r.missing?.length?`<span class="miss">Needs: ${esc(r.missing.join(", "))}</span>`:""}</div>`).join("")}</div>
+  ${v.staleDraft?`<div class="notice"><span>You dictated changes since editing this message.</span><button class="btn" id="rebuild">Rebuild message</button></div>`:""}
+  <div class="draft">
+    <label for="draft">Message to ${esc(p.physician)} (Teams)</label>
+    <textarea id="draft" spellcheck="true">${esc(v.draft)}</textarea>
+    <div class="actions">
+      <button class="btn primary" id="ucopy" ${v.reconBusy?"disabled":""}>${v.reconBusy?"Checking your edits…":"Update & Copy"}</button>
+      ${v.msgStatus==="copied"?`<button class="btn" id="sent">Mark as sent</button>`:""}
+      <span class="status" id="mstatus">${status}</span>
+    </div>
+    ${v.copyNote?`<p class="status muted">${esc(v.copyNote)}</p>`:""}
+    ${v.reconErr?`<p class="err" role="alert">${esc(v.reconErr)}</p>`:""}
+    ${v.recon?reconPanel(v.recon):""}
+  </div>`;
+}
+function reconPanel(r){
+  const none = !r.added.length && !r.changed.length && !r.removed.length;
+  return `<div class="panel" role="dialog" aria-labelledby="rtitle"><h3 id="rtitle">Confirm changes to the requests</h3>
+    ${none?`<p style="margin:0">Your edits only changed wording. The requests stay the same.</p>`:`<ul class="diff">
+      ${r.added.map(a=>`<li><span class="tag add">Added</span>${esc(a)}</li>`).join("")}
+      ${r.changed.map(c=>`<li><span class="tag chg">Changed</span>${esc(c.item)}: ${esc(c.from)} → ${esc(c.to)}</li>`).join("")}
+      ${r.removed.map(a=>`<li><span class="tag del">Removed</span>${esc(a)}</li>`).join("")}</ul>`}
+    <div class="actions"><button class="btn primary" id="rconfirm">Confirm and copy</button><button class="btn ghost" id="rcancel">Keep editing</button></div></div>`;
+}
+
+function bindMain(){
+  const v = V();
+  $("retry") && ($("retry").onclick = ()=>{ v.error=null; processVisit(); });
+  document.querySelectorAll("[data-src]").forEach(b=>b.onclick=()=>{ const pth=b.dataset.src; if(!V().chart.sources?.[pth]) return; v.openSrc = v.openSrc===pth?null:pth; render(); });
+  $("sign") && ($("sign").onclick = ()=>{ v.signed = `${now()} by ${NURSE}, RN`; render(); });
+  const d = $("draft");
+  if(d){
+    d.oninput = ()=>{ v.draft = d.value; v.draftTouched = true; if(v.msgStatus!=="draft"){ v.msgStatus="draft"; v.copyNote="Edited after copying. Copy again before sending."; } v.recon=null; const ms=$("mstatus"); if(ms) ms.innerHTML=`<span class="chip neutral">Draft · edited</span>`; };
+    d.onblur = ()=>{ setTimeout(()=>{ if(document.activeElement?.id!=="draft") render(); }, 0); };
+  }
+  $("ucopy") && ($("ucopy").onclick = updateAndCopy);
+  $("sent") && ($("sent").onclick = ()=>{ v.msgStatus="sent"; v.sentAt=now(); v.copyNote=null; render(); });
+  $("rconfirm") && ($("rconfirm").onclick = confirmRecon);
+  $("rcancel") && ($("rcancel").onclick = ()=>{ v.recon=null; render(); });
+  $("rebuild") && ($("rebuild").onclick = ()=>{ v.draftTouched=false; v.msgStatus="draft"; v.copyNote=null; syncDraft(v); render(); });
+}
+
+function renderDock(){
+  const v = V(), dock = $("dock");
+  if(v.signed){ dock.innerHTML = `<div class="wrap inner"><span class="state"><span class="chip ok">Signed</span> This visit note is locked.</span></div>`; return; }
+  const script = SAMPLE[S.pid];
+  const stateLine = v.processing ? `<span class="state"><span class="spin" aria-hidden="true"></span>Updating chart…</span>` : v.segs.length ? `<span class="state muted">${v.segs.filter(s=>s.status==="done").length} of ${v.segs.length} parts charted</span>` : "";
+  if(!$("composer")){
+    dock.innerHTML = `<div class="wrap inner">
+      <label for="composer" class="eyebrow">Dictation</label>
+      <textarea id="composer" placeholder="Tap here, then the mic on your keyboard, and talk…" enterkeyhint="send"></textarea>
+      <div class="bar"><span class="hint" id="dstate"></span>
+        ${script?`<button class="btn ghost" id="sampleBtn"></button>`:""}
+        <button class="btn primary" id="add">Add to chart</button></div></div>`;
+    const c = $("composer"); c.value = v.composer;
+    c.oninput = ()=>{ v.composer = c.value; };
+    $("add").onclick = addDictation;
+    if($("sampleBtn")) $("sampleBtn").onclick = ()=>{ const s = SAMPLE[S.pid]; if(v.sampleIdx < s.length){ c.value = s[v.sampleIdx++]; v.composer=c.value; renderDock(); } };
+  }
+  $("dstate").innerHTML = stateLine || "Speak, then tap Add to chart.";
+  if($("sampleBtn")){ const left = script.length - v.sampleIdx; $("sampleBtn").textContent = left ? `Sample line ${v.sampleIdx+1}/${script.length}` : "Sample done"; $("sampleBtn").disabled = !left; }
+}
+
+render();
+getSample();
+})();
+</script>

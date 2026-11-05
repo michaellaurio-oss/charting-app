@@ -1,0 +1,9 @@
+# Large video files (too big for GitHub, and not ours to publish)
+*.mp4
+*.mov
+*.avi
+
+# Windows/Office clutter
+Thumbs.db
+Desktop.ini
+~$*
